@@ -1,5 +1,4 @@
 package main
-
 import (
 	"bytes"
 	"crypto/cipher"
@@ -8,93 +7,14 @@ import (
 	"fmt"
 	"io"
 )
-
-// Encrypt data using Triple DES (3DES) in CBC mode
-func tripleDesEncrypt(plaintext, key []byte) ([]byte, error) {
-	// Ensure key length is 24 bytes for 3DES
-	if len(key) != 24 {
-		return nil, fmt.Errorf("key length must be 24 bytes")
-	}
-
-	// Create 3DES cipher block
-	block, err := des.NewTripleDESCipher(key)
-	if err != nil {
-		return nil, err
-	}
-
-	// CBC requires a random initialization vector (IV)
-	iv := make([]byte, des.BlockSize)
-	_, err = io.ReadFull(rand.Reader, iv)
-	if err != nil {
-		return nil, err
-	}
-
-	// Pad plaintext to block size (DES block size is 8 bytes)
-	plaintext = pad(plaintext, des.BlockSize)
-
-	// Create CBC mode encrypter
-	mode := cipher.NewCBCEncrypter(block, iv)
-
-	// Encrypt the plaintext
-	ciphertext := make([]byte, len(plaintext))
-	mode.CryptBlocks(ciphertext, plaintext)
-
-	// Return the IV concatenated with the ciphertext
-	return append(iv, ciphertext...), nil
-}
-
-// Decrypt data using Triple DES (3DES) in CBC mode
-func tripleDesDecrypt(ciphertext, key []byte) ([]byte, error) {
-	// Ensure key length is 24 bytes for 3DES
-	if len(key) != 24 {
-		return nil, fmt.Errorf("key length must be 24 bytes")
-	}
-
-	// Create 3DES cipher block
-	block, err := des.NewTripleDESCipher(key)
-	if err != nil {
-		return nil, err
-	}
-
-	// Extract the IV (the first 8 bytes of the ciphertext)
-	if len(ciphertext) < des.BlockSize {
-		return nil, fmt.Errorf("ciphertext too short")
-	}
-	iv := ciphertext[:des.BlockSize]
-
-	// The rest is the actual ciphertext
-	ciphertext = ciphertext[des.BlockSize:]
-
-	// Create CBC mode decrypter
-	mode := cipher.NewCBCDecrypter(block, iv)
-
-	// Decrypt the ciphertext
-	plaintext := make([]byte, len(ciphertext))
-	mode.CryptBlocks(plaintext, ciphertext)
-
-	// Remove padding
-	plaintext = unpad(plaintext)
-
-	return plaintext, nil
-}
-
-// Pad the plaintext to a multiple of the block size
 func pad(data []byte, blockSize int) []byte {
 	padding := blockSize - len(data)%blockSize
 	add_byte:=[]byte{byte(padding)}
 	fmt.Printf("%d more bytes needed.\nByte added: 0x%x.\n",padding,add_byte)
 	//PKCS7 Convention
-	padText := bytes.Repeat(add_byte,padding)
+	padText:= bytes.Repeat(add_byte,padding)
 	return append(data,padText...)
 }
-
-// Unpad the decrypted plaintext
-func unpad(data []byte) []byte {
-	length := len(data)
-	padding := int(data[length-1])
-	return data[:length-padding]
-}
-
 func main() {
 	// 24-byte key for Triple DES (3DES)
 	key := []byte("1234567890abcdef12345678")
@@ -146,11 +66,4 @@ func main() {
 	}
 	fmt.Printf("Decrypted: %x\n",original)
 	fmt.Printf("Original text : %s\n",original[des.BlockSize:length-int(original[length-1])])
-	// // Decrypt the ciphertext
-	// decryptedText, err := tripleDesDecrypt(ciphertext, key)
-	// if err != nil {
-	// 	fmt.Println("Error decrypting:", err)
-	// 	return
-	// }
-	// fmt.Printf("Decrypted text: %s\n", decryptedText)
 }
