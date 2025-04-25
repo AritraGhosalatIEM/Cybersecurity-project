@@ -4,19 +4,29 @@ import (
 	"crypto/cipher"
 	"crypto/des"
 	"crypto/rand"
-	"fmt"
 	"io"
 	"os"
-	// "reflect"
+	// "image"
+	_ "embed"
 	"image/color"
+	// "github.com/golang/freetype"
 	"gioui.org/app"
+	// "gioui.org/f32"
+	"gioui.org/font/opentype"
 	"gioui.org/op"
-	// "gioui.org/text"
+	// "gioui.org/op/paint"
+	// "gioui.org/op/clip"
 	"gioui.org/unit"
+	// "gioui.org/text"
 	"gioui.org/widget/material"
 	"gioui.org/widget"
 	"gioui.org/layout"
+	//Debugging
+	"reflect"
+	"fmt"
 )
+//go:embed agave.ttf
+var agave []byte
 func pad(data []byte, blockSize int) []byte {
 	padding := blockSize - len(data)%blockSize
 	add_byte:=[]byte{byte(padding)}
@@ -26,7 +36,12 @@ func pad(data []byte, blockSize int) []byte {
 	return append(data,padText...)
 }
 var key_label material.LabelStyle;
+var sh_enc material.ListStyle;
 var key_input [24]widget.Editor
+var text_input widget.Editor
+var scroooooll widget.Scrollbar
+var encryption_process[] layout.FlexChild
+var theme *material.Theme
 func show_encryption(){
 	key1:=make([]byte,8)
 	key2:=make([]byte,8)
@@ -42,19 +57,198 @@ func show_encryption(){
 		key3[i]=key_input[i+16].Text()[0]
 	}
 	key_label.Color=color.NRGBA{R:0,G:0,B:0,A:255}
-	key_label.Text="KYS"
-	fmt.Println(string(key1))
-	fmt.Println(string(key2))
-	fmt.Println(string(key3))
+	// key_label.Text="KYS"
+	paddedtext:=pad([]byte(text_input.Text()),des.BlockSize)
+	initialization_vector:=make([]byte,des.BlockSize)
+	io.ReadFull(rand.Reader,initialization_vector)
+	vector:=make([]byte,des.BlockSize)
+	copy(vector,initialization_vector)
+	xor_with_values:=make([]byte,len(paddedtext))
+	encryption_input:=make([]byte,len(paddedtext))
+	encryption1_output:=make([]byte,len(paddedtext))
+	encryption2_output:=make([]byte,len(paddedtext))
+	encryption3_output:=make([]byte,len(paddedtext))
+	block_des1,_:=des.NewCipher(key1)
+	block_des2,_:=des.NewCipher(key2)
+	block_des3,_:=des.NewCipher(key3)
+	for i:=0;i<len(paddedtext);i+=des.BlockSize{
+		plaintext_blocks:=make([]layout.FlexChild,des.BlockSize)
+		xor_with:=make([]layout.FlexChild,des.BlockSize)
+		xor_result:=make([]layout.FlexChild,des.BlockSize)
+		enc1_result:=make([]layout.FlexChild,des.BlockSize)
+		enc2_result:=make([]layout.FlexChild,des.BlockSize)
+		enc3_result:=make([]layout.FlexChild,des.BlockSize)
+		for j:=0;j<des.BlockSize;j++{
+			plaintext_blocks[j]= layout.Rigid(
+				func (gtx layout.Context)layout.Dimensions{
+					return material.Label(theme,20.0,string(paddedtext[i+j])).Layout(gtx)
+				},
+			)
+			xor_with_values[i+j]=vector[j]
+			xor_with[j]= layout.Rigid(
+				func (gtx layout.Context)layout.Dimensions{
+					return material.Label(theme,20.0,string(xor_with_values[i+j])).Layout(gtx)
+				},
+			)
+			encryption_input[i+j]=vector[j]^paddedtext[i+j]
+			xor_result[j]= layout.Rigid(
+				func (gtx layout.Context)layout.Dimensions{
+					return material.Label(theme,20.0,string(encryption_input[i+j])).Layout(gtx)
+				},
+			)
+		}
+		block_des1.Encrypt(encryption1_output[i:i+8],encryption_input[i:i+8])
+		block_des2.Decrypt(encryption2_output[i:i+8],encryption1_output[i:i+8])
+		block_des3.Encrypt(encryption3_output[i:i+8],encryption2_output[i:i+8])
+		copy(vector,encryption3_output[i:i+8])
+		for j:=0;j<8;j++{
+			enc1_result[j]= layout.Rigid(
+				func (gtx layout.Context)layout.Dimensions{
+					return material.Label(theme,20.0,string(encryption1_output[i+j])).Layout(gtx)
+				},
+			)
+			enc2_result[j]= layout.Rigid(
+				func (gtx layout.Context)layout.Dimensions{
+					return material.Label(theme,20.0,string(encryption2_output[i+j])).Layout(gtx)
+				},
+			)
+			enc3_result[j]= layout.Rigid(
+				func (gtx layout.Context)layout.Dimensions{
+					return material.Label(theme,20.0,string(encryption3_output[i+j])).Layout(gtx)
+				},
+			)
+		}
+		var block_process layout.FlexChild=layout.Rigid(//display of encryption for each block
+			func(gtx layout.Context)layout.Dimensions{
+				return layout.Flex{
+					Axis:layout.Horizontal,
+					Spacing:layout.SpaceBetween,
+				}.Layout(gtx,
+					layout.Rigid(
+						func(gtx layout.Context)layout.Dimensions{
+							return widget.Border{
+								Color:color.NRGBA{R:0,G:0,B:0,A:255},
+								Width:unit.Dp(1),
+							}.Layout(gtx,
+								func(gtx layout.Context)layout.Dimensions{
+									return layout.Flex{
+										Axis:layout.Vertical,
+										Spacing:layout.SpaceBetween,
+									}.Layout(gtx, plaintext_blocks...,)
+								},
+							)
+						},
+					),
+					layout.Rigid(
+						func(gtx layout.Context)layout.Dimensions{
+							return material.Label(theme,20.0,"⊕").Layout(gtx)
+						},
+					),
+					layout.Rigid(
+						func(gtx layout.Context)layout.Dimensions{
+							return widget.Border{
+								Color:color.NRGBA{R:0,G:0,B:0,A:255},
+								Width:unit.Dp(1),
+							}.Layout(gtx,
+								func(gtx layout.Context)layout.Dimensions{
+									return layout.Flex{
+										Axis:layout.Vertical,
+										Spacing:layout.SpaceBetween,
+									}.Layout(gtx,xor_with...,)
+								},
+							)
+						},
+					),
+					layout.Rigid(
+						func(gtx layout.Context)layout.Dimensions{
+							return material.Label(theme,20.0,"=").Layout(gtx)
+						},
+					),
+					layout.Rigid(
+						func(gtx layout.Context)layout.Dimensions{
+							return widget.Border{
+								Color:color.NRGBA{R:0,G:0,B:0,A:255},
+								Width:unit.Dp(1),
+							}.Layout(gtx,
+								func(gtx layout.Context)layout.Dimensions{
+									return layout.Flex{
+										Axis:layout.Vertical,
+										Spacing:layout.SpaceBetween,
+									}.Layout(gtx,xor_result...,)
+								},
+							)
+						},
+					),
+					layout.Rigid(
+						func(gtx layout.Context)layout.Dimensions{
+							return widget.Border{
+								Color:color.NRGBA{R:0,G:0,B:0,A:255},
+								Width:unit.Dp(1),
+							}.Layout(gtx,
+								func(gtx layout.Context)layout.Dimensions{
+									return layout.Flex{
+										Axis:layout.Vertical,
+										Spacing:layout.SpaceBetween,
+									}.Layout(gtx,enc1_result...,)
+								},
+							)
+						},
+					),
+					layout.Rigid(
+						func(gtx layout.Context)layout.Dimensions{
+							return widget.Border{
+								Color:color.NRGBA{R:0,G:0,B:0,A:255},
+								Width:unit.Dp(1),
+							}.Layout(gtx,
+								func(gtx layout.Context)layout.Dimensions{
+									return layout.Flex{
+										Axis:layout.Vertical,
+										Spacing:layout.SpaceBetween,
+									}.Layout(gtx,enc2_result...,)
+								},
+							)
+						},
+					),
+					layout.Rigid(
+						func(gtx layout.Context)layout.Dimensions{
+							return widget.Border{
+								Color:color.NRGBA{R:0,G:0,B:0,A:255},
+								Width:unit.Dp(1),
+							}.Layout(gtx,
+								func(gtx layout.Context)layout.Dimensions{
+									return layout.Flex{
+										Axis:layout.Vertical,
+										Spacing:layout.SpaceBetween,
+									}.Layout(gtx,enc3_result...,)
+								},
+							)
+						},
+					),
+				)
+			},
+		)
+		encryption_process=append(encryption_process,block_process)
+	}
 }
 func window(){
 	win:= new(app.Window)
 	win.Option(app.Title("3DES-CBC"))
 	var ops op.Ops
 	var encrypt_button widget.Clickable
-	var text_input widget.Editor
-	theme:=material.NewTheme()
+	text_input.SingleLine=false
+	theme=material.NewTheme()
+	monospace,_:=opentype.ParseCollection(agave)
+	// theme.Face=monospace
+	fmt.Println(reflect.TypeOf(monospace))
 	key_label=material.Label(theme,20.0,"")
+	var lay_list layout.List
+	lay_list.Axis=layout.Vertical
+	lay_list.Alignment=layout.Start
+	wid_list:=widget.List{
+		scroooooll,
+		lay_list,
+	}
+	sh_enc=material.List(theme,&wid_list)
 	for i:=0;i<24;i++{
 		key_input[i].MaxLen=1
 	}
@@ -112,8 +306,8 @@ func window(){
 														elements[i]=layout.Rigid(
 															func(gtx layout.Context) layout.Dimensions{
 																return widget.Border{
-																	Color: color.NRGBA{R:0,G:0,B:0,A:255},
-																	Width: unit.Dp(1),
+																	Color:color.NRGBA{R:0,G:0,B:0,A:255},
+																	Width:unit.Dp(1),
 																}.Layout(gtx,
 																	func(gtx layout.Context) layout.Dimensions{
 																		return material.Editor(theme,&key_input[i-1]," ").Layout(gtx)
@@ -145,7 +339,28 @@ func window(){
 							return key_label.Layout(gtx)
 						},
 					),
+					layout.Rigid(
+						func(gtx layout.Context) layout.Dimensions{
+							return sh_enc.Layout(gtx,1,func(gtx layout.Context,index int) layout.Dimensions{
+								return layout.Flex{
+									Axis:layout.Vertical,
+									Spacing:layout.SpaceBetween,
+								}.Layout(gtx,encryption_process...,)
+							})
+						},
+					),
 				)
+				// paint.ColorOp{Color: color.NRGBA{R: 0x80, A: 0xFF}}.Add(gtx.Ops)
+				// var path clip.Path
+				// path.Begin(gtx.Ops)
+				// path.Move(f32.Pt(10,10))
+				// path.Line(f32.Pt(20,20))
+				// paint.FillShape(gtx.Ops,color.NRGBA{R: 0x80, A: 0xFF},
+				// 	clip.Stroke{
+				// 		Path:path.End(),
+				// 		Width:4,
+				// 	}.Op(),
+				// )
 				typ.Frame(gtx.Ops)
 			case app.DestroyEvent:
 				os.Exit(0)
